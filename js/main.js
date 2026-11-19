@@ -258,6 +258,10 @@
     action();
   }, { passive: false });
 
+  // iOS Safari only unlocks audio on touchend / pointerup gestures
+  window.addEventListener('touchend', function () { CD.Audio.unlock(); }, { passive: true });
+  window.addEventListener('pointerup', function () { CD.Audio.unlock(); });
+
   // stop iOS scrolling, rubber-banding, double-tap zoom and pinch zoom
   document.addEventListener('touchstart', function (e) {
     if (!isUi(e.target)) e.preventDefault();

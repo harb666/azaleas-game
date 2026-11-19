@@ -31,7 +31,7 @@
         s.connect(ctx.destination);
         s.start(0);
       }
-      if (ctx.state === 'suspended') ctx.resume();
+      if (ctx.state !== 'running' && ctx.resume) ctx.resume();
       startMusic();
     } catch (e) { /* audio is optional */ }
   }
@@ -162,6 +162,6 @@
     setMuted: setMuted,
     toggle: function () { setMuted(!muted); return muted; },
     suspend: function () { try { if (ctx && ctx.state === 'running') ctx.suspend(); } catch (e) { /* ignore */ } },
-    resume: function () { try { if (ctx && ctx.state === 'suspended') ctx.resume(); if (ctx) nextTime = Math.max(nextTime, ctx.currentTime + 0.05); } catch (e) { /* ignore */ } }
+    resume: function () { try { if (ctx && ctx.state !== 'running') ctx.resume(); if (ctx) nextTime = Math.max(nextTime, ctx.currentTime + 0.05); } catch (e) { /* ignore */ } }
   };
 })();

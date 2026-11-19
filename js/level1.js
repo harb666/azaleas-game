@@ -7,7 +7,7 @@
   var CAP_W = 76, CAP_H = 26;
   var PIPE_COUNT = 5;     // exactly five pipe pairs complete the level
   var SPACING = 230;
-  var SPEED = 125;
+  var SPEED = 115;
   var GRAVITY = 1350;
   var FLAP_V = -410;
   var MAX_FALL = 560;
@@ -116,7 +116,7 @@
     var floor = H - FLOOR_H;
     var prev = H * 0.45;
     for (var i = 0; i < PIPE_COUNT; i++) {
-      var gap = 178 - i * 4;
+      var gap = 196 - i * 4;
       var minY = 78 + gap / 2;                 // keep a visible top pipe
       var maxY = floor - 62 - gap / 2;         // keep a visible bottom pipe
       var gy = CD.rand(minY, maxY);
