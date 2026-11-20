@@ -11,10 +11,23 @@ A square strawberry shortcake leaves a magical shortcake trail behind it. It fli
 - 🔊 button: turns sound on or off. The setting is remembered.
 
 ## Levels
-1. **Fly**: fly through exactly 5 candy pipe pairs. After that you see *LEVEL COMPLETE! 🍓* and Level 2 starts automatically, with your score kept.
-2. **Run**: the cake runs by itself and can't fly any more. Tap to jump over giant strawberries, chocolate blocks, rolling sweets, candy spikes, frosting barriers and gaps in the ground, all the way to the finish line.
+Pick either level from the main menu.
+1. **Fly forever**: tap to flap through candy pipes. There's no end: the further you fly, the faster it scrolls and the narrower and closer the gaps get. You'll see cheers at 5, 10, 15, 20 and 30 pipes.
+2. **Run & jump**: the cake runs by itself; tap to jump over strawberries, chocolate blocks, rolling sweets, candy spikes, frosting barriers and holes. It speeds up, and the obstacles get closer together, all the way to the finish line.
 
-Unlocked levels, best score and the mute setting are saved in `localStorage`.
+## Points and cakes
+Every pipe, obstacle and strawberry is worth 1 point, and reaching the finish line is worth 10. Points from every game are added up and can be spent in the **Cakes** shop:
+
+| Cake | Points |
+|---|---|
+| Shortcake | free |
+| Choco Cake | 20 |
+| Mint Choc Chip | 60 |
+| Blueberry Cheesecake | 120 |
+| Rainbow Sprinkle | 200 |
+| Royal Gold Cake | 400 |
+
+Points, owned cakes, the chosen cake, best scores and the mute setting are saved on the device (`localStorage`).
 
 ## Code
 Plain HTML5 Canvas + JavaScript with no dependencies or build step. All art and sound are generated in code.

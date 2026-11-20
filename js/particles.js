@@ -26,10 +26,11 @@
     var S = CD.Sprites;
     var r = Math.random();
     var img, size = 1, life = CD.rand(0.7, 1.2), g = 0, vy = CD.rand(-25, 25);
-    if (r < 0.18) { img = Math.random() < 0.6 ? S.cakePink : S.cakeWhite; size = CD.rand(0.7, 1.0); g = 120; }
-    else if (r < 0.42) { img = Math.random() < 0.6 ? S.dotPink : (Math.random() < 0.5 ? S.dotHot : S.dotCream); size = CD.rand(0.45, 0.9); g = 40; }
+    var T = S.trail;
+    if (r < 0.18) { img = Math.random() < 0.6 ? T.pieces[0] : T.pieces[1]; size = CD.rand(0.7, 1.0); g = 120; }
+    else if (r < 0.42) { img = CD.pick(T.dots); size = CD.rand(0.45, 0.9); g = 40; }
     else if (r < 0.64) { img = CD.pick(S.sparks); size = CD.rand(0.5, 1.0); }
-    else if (r < 0.80) { img = S.berry; size = CD.rand(0.7, 1.0); g = 90; }
+    else if (r < 0.80) { img = T.mini; size = CD.rand(0.7, 1.0); g = 90; }
     else { img = CD.pick(S.hearts); size = CD.rand(0.6, 1.0); g = -40; vy = CD.rand(-35, -10); }
     this.add({
       kind: 'img', img: img,

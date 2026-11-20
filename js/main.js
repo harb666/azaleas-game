@@ -8,8 +8,6 @@
   var canvas = $('game'), ctx = canvas.getContext('2d');
   var wrap = $('wrap');
   var STEP = 1 / 120;      // fixed physics step (same speed on 60Hz and 120Hz screens)
-  var MAX_LEVEL = 2;
-
   CD.Sprites.build();
 
   var game = {
@@ -18,11 +16,11 @@
     levelNum: 1,
     score: 0,
     berries: 0,
-    l2StartScore: 0,
-    l2StartBerries: 0,
     particles: new CD.Particles(),
-    unlocked: CD.clamp(CD.store.get('unlocked', 1) | 0, 1, MAX_LEVEL),
-    best: CD.store.get('best', 0) | 0,
+    wallet: Math.max(0, CD.store.get('points', 0) | 0),          // points to spend in the shop
+    owned: CD.store.get('owned', ['shortcake']),
+    skinId: CD.store.get('skin', 'shortcake'),
+    best: { 1: CD.store.get('best1', 0) | 0, 2: CD.store.get('best2', 0) | 0 },
     shakeT: 0, shakeMag: 0,
     fade: null,             // { t, dur, mid, done }
     paused: false,
@@ -32,6 +30,10 @@
     menuBg: null
   };
   window.__cake = game; // debug / test handle
+  if (!Array.isArray(game.owned)) game.owned = ['shortcake'];
+  if (game.owned.indexOf(game.skinId) < 0) game.skinId = 'shortcake';
+  game.skin = CD.skinById(game.skinId);
+  CD.Sprites.useSkin(game.skin);
 
   // ---------------- layout ----------------
   var probe = document.createElement('div');
@@ -65,20 +67,34 @@
   resize();
 
   // ---------------- UI helpers ----------------
-  var overlays = ['menu', 'hud', 'levelComplete', 'gameOver', 'victory', 'paused'];
+  var overlays = ['menu', 'hud', 'shop', 'gameOver', 'victory', 'paused'];
   function show(ids) {
     for (var i = 0; i < overlays.length; i++) $(overlays[i]).classList.toggle('hidden', ids.indexOf(overlays[i]) < 0);
   }
 
   function refreshSoundLabels() {
     var m = CD.Audio.isMuted();
-    $('btnSound').textContent = m ? '🔇 Sound: OFF' : '🔊 Sound: ON';
+    $('btnSound').textContent = m ? '🔇' : '🔊';
     $('hudMute').textContent = m ? '🔇' : '🔊';
   }
 
+  function cheapestNew() {
+    var c = null;
+    for (var i = 0; i < CD.SKINS.length; i++) {
+      var sk = CD.SKINS[i];
+      if (game.owned.indexOf(sk.id) < 0 && (!c || sk.price < c.price)) c = sk;
+    }
+    return c;
+  }
+
   function refreshMenu() {
-    $('btnL2').classList.toggle('locked', game.unlocked < 2);
-    $('menuBest').textContent = game.best > 0 ? '⭐ Best score: ' + game.best : '';
+    $('menuPoints').textContent = '⭐ ' + game.wallet + (game.wallet === 1 ? ' point' : ' points');
+    var b = [];
+    if (game.best[1]) b.push('Fly best: ' + game.best[1]);
+    if (game.best[2]) b.push('Run best: ' + game.best[2]);
+    $('menuBest').textContent = b.join('  ·  ');
+    var nx = cheapestNew();
+    $('shopBadge').classList.toggle('hidden', !(nx && game.wallet >= nx.price));
     refreshSoundLabels();
   }
 
@@ -93,9 +109,7 @@
     if (L.num === 1) {
       var key = 'p' + L.passed;
       if (force || key !== lastProg) {
-        var html = '';
-        for (var i = 0; i < CD.Level1.PIPE_COUNT; i++) html += '<span class="pip' + (i < L.passed ? ' on' : '') + '"></span>';
-        prog.innerHTML = html;
+        prog.innerHTML = '<span class="hud-count">🍭 ' + L.passed + (L.passed === 1 ? ' pipe' : ' pipes') + '</span>';
         lastProg = key;
       }
     } else {
@@ -110,51 +124,66 @@
   }
 
   function saveBest() {
-    if (game.score > game.best) { game.best = game.score; CD.store.set('best', game.best); return true; }
+    var n = game.levelNum;
+    if (game.score > game.best[n]) { game.best[n] = game.score; CD.store.set('best' + n, game.score); return true; }
     return false;
   }
 
-  function unlock(n) {
-    if (n > game.unlocked) { game.unlocked = Math.min(n, MAX_LEVEL); CD.store.set('unlocked', game.unlocked); }
+  // Put this run's score into the points bank; returns a hint if a new cake became affordable
+  function bankPoints() {
+    var before = game.wallet;
+    game.wallet += game.score;
+    CD.store.set('points', game.wallet);
+    var nx = cheapestNew();
+    if (nx && before < nx.price && game.wallet >= nx.price) return 'You can buy ' + nx.name + ' now! 🎂';
+    if (nx) return (nx.price - game.wallet) + ' more points for ' + nx.name;
+    return '';
   }
+
+  function showEndCard(prefix) {
+    var isBest = saveBest();
+    var hint = bankPoints();
+    $(prefix + 'BestPts').textContent = '+' + game.score + ' ⭐  (you have ' + game.wallet + ')';
+    $(prefix + 'Best').textContent = isBest && game.score > 0 ? '🎉 New best score!' : (game.best[game.levelNum] ? 'Best: ' + game.best[game.levelNum] : '');
+    var u = $(prefix + 'BestUnlock');
+    u.textContent = hint;
+    u.classList.toggle('hidden', !hint);
+  }
+
+  var toastTimer = null;
+  game.toast = function (text) {
+    var el = $('toast');
+    el.textContent = text;
+    el.classList.remove('hidden');
+    el.style.animation = 'none';
+    void el.offsetWidth; // restart the animation
+    el.style.animation = '';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.add('hidden'); }, 1800);
+  };
 
   // ---------------- game API used by levels ----------------
   game.addScore = function (n) { game.score += n; refreshHud(); };
-  game.addBerry = function () { game.berries++; game.score += 5; refreshHud(); };
+  game.addBerry = function () { game.berries++; game.score += 1; refreshHud(); };
   game.onProgress = function () { refreshHud(); };
   game.shake = function (t, mag) { game.shakeT = t; game.shakeMag = mag; };
 
-  game.onLevelComplete = function (num, stars) {
-    unlock(num + 1);           // saved the moment Level 1 is beaten
-    CD.Audio.play('levelComplete');
-    setStars($('levelComplete'), stars);
-    show(['hud', 'levelComplete']);
-    refreshHud(true);
-  };
-
-  game.onLevel1Done = function () {
-    startFade(function () {
-      startLevel(2, true);     // keep score + strawberries
-    });
-  };
-
   game.onDead = function () {
     game.scene = 'gameover';
-    var isBest = saveBest();
     $('goScore').textContent = game.score;
-    $('goBest').textContent = isBest && game.score > 0 ? '🎉 New best score!' : (game.best ? 'Best: ' + game.best : '');
+    showEndCard('go');
+    $('btnRetry').textContent = game.levelNum === 1 ? '↻ FLY AGAIN' : '↻ RUN AGAIN';
     CD.Audio.play('gameOver');
     show(['gameOver']);
   };
 
   game.onVictory = function () {
     game.scene = 'victory';
-    var isBest = saveBest();
     var L = game.level;
     var stars = 1 + (L.collected >= Math.ceil(L.totalBerries / 2) ? 1 : 0) + (L.collected >= L.totalBerries - 1 ? 1 : 0);
     setStars($('victory'), stars);
     $('vScore').textContent = game.score;
-    $('vBest').textContent = isBest ? '🎉 New best score!' : 'Best: ' + game.best;
+    showEndCard('v');
     show(['victory']);
   };
 
@@ -197,37 +226,89 @@
     game.fade = { t: 0, dur: 0.45, mid: mid, done: false };
   }
 
-  function startLevel(n, carry) {
+  function startLevel(n) {
     game.lockH = true;
+    resize();
     game.levelNum = n;
     game.particles.clear();
-    if (n === 1) {
-      game.score = 0;
-      game.berries = 0;
-      game.level = new CD.Level1(game);
-    } else {
-      if (!carry) { game.score = 0; game.berries = 0; }
-      game.l2StartScore = game.score;
-      game.l2StartBerries = game.berries;
-      game.level = new CD.Level2(game);
-    }
+    game.score = 0;
+    game.berries = 0;
+    game.level = n === 1 ? new CD.Level1(game) : new CD.Level2(game);
     game.scene = 'level';
     game.paused = false;
     $('hudLevel').textContent = n === 1 ? 'LEVEL 1 · FLY' : 'LEVEL 2 · RUN';
+    $('toast').classList.add('hidden');
     show(['hud']);
     refreshHud(true);
   }
 
-  function retry() {
-    if (game.levelNum === 2) {
-      // progress is never lost: retry Level 2 with the score you brought from Level 1
-      game.score = game.l2StartScore;
-      game.berries = game.l2StartBerries;
-      startLevel(2, true);
-    } else {
-      startLevel(1);
-    }
+  function retry() { startLevel(game.levelNum); }
+
+  // ---------------- character shop ----------------
+  function openShop() {
+    game.scene = 'shop';
+    game.level = null;
+    game.lockH = false;
+    if (!game.menuBg) game.menuBg = new CD.Background('sky');
+    renderShop();
+    show(['shop']);
   }
+
+  function renderShop() {
+    $('shopPoints').textContent = '⭐ ' + game.wallet;
+    var grid = $('shopGrid');
+    grid.innerHTML = '';
+    CD.SKINS.forEach(function (sk) {
+      var owned = game.owned.indexOf(sk.id) >= 0, chosen = game.skinId === sk.id;
+      var card = document.createElement('div');
+      card.className = 'cake-card' + (chosen ? ' selected' : '');
+      var cv = document.createElement('canvas');
+      var k = 2 * Math.min(window.devicePixelRatio || 1, 2);
+      cv.width = 72 * k; cv.height = 72 * k;
+      var c2 = cv.getContext('2d');
+      c2.scale(k, k);
+      CD.drawCake(c2, 36, 41, 34, { skin: sk, legs: 'stand', arms: 'rest', face: chosen ? 'joy' : 'happy', t: 1 });
+      var nm = document.createElement('div');
+      nm.className = 'nm';
+      nm.textContent = sk.name;
+      var b = document.createElement('button');
+      if (chosen) { b.className = 'btn chosen'; b.textContent = '✓ PLAYING'; }
+      else if (owned) { b.className = 'btn mint'; b.textContent = 'CHOOSE'; }
+      else if (game.wallet >= sk.price) { b.className = 'btn pink'; b.textContent = 'BUY ⭐' + sk.price; }
+      else { b.className = 'btn locked'; b.textContent = '🔒 ⭐' + sk.price; }
+      b.addEventListener('click', function (e) {
+        e.preventDefault();
+        CD.Audio.unlock();
+        if (chosen) return;
+        if (!owned) {
+          if (game.wallet < sk.price) {
+            CD.Audio.play('land');
+            b.textContent = 'Need ' + (sk.price - game.wallet) + ' ⭐';
+            return;
+          }
+          game.wallet -= sk.price;
+          game.owned.push(sk.id);
+          CD.store.set('points', game.wallet);
+          CD.store.set('owned', game.owned);
+          CD.Audio.play('levelComplete');
+        } else {
+          CD.Audio.play('click');
+        }
+        selectSkin(sk.id);
+        renderShop();
+      });
+      card.appendChild(cv); card.appendChild(nm); card.appendChild(b);
+      grid.appendChild(card);
+    });
+  }
+
+  function selectSkin(id) {
+    game.skinId = id;
+    game.skin = CD.skinById(id);
+    CD.Sprites.useSkin(game.skin);
+    CD.store.set('skin', id);
+  }
+  game.selectSkin = selectSkin;
 
   function toMenu() {
     game.scene = 'menu';
@@ -248,7 +329,7 @@
     if (game.scene === 'level' && game.level && !game.fade) game.level.input();
   }
 
-  function isUi(target) { return target && target.closest && target.closest('button, .card'); }
+  function isUi(target) { return target && target.closest && target.closest('button, .card, .shop-panel'); }
 
   window.addEventListener('pointerdown', function (e) {
     CD.Audio.unlock();
@@ -262,11 +343,14 @@
   window.addEventListener('touchend', function () { CD.Audio.unlock(); }, { passive: true });
   window.addEventListener('pointerup', function () { CD.Audio.unlock(); });
 
-  // stop iOS scrolling, rubber-banding, double-tap zoom and pinch zoom
+  // stop iOS scrolling, rubber-banding, double-tap zoom and pinch zoom (the shop list may scroll)
   document.addEventListener('touchstart', function (e) {
     if (!isUi(e.target)) e.preventDefault();
   }, { passive: false });
-  document.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener('touchmove', function (e) {
+    if (e.target && e.target.closest && e.target.closest('.shop-grid')) return;
+    e.preventDefault();
+  }, { passive: false });
   document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
   document.addEventListener('dblclick', function (e) { e.preventDefault(); });
   document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
@@ -281,6 +365,7 @@
     keyDown[k] = true;
     CD.Audio.unlock();
     if (game.scene === 'menu') { CD.Audio.play('click'); startLevel(1); return; }
+    if (game.scene === 'shop') return;
     if (game.paused) { resume(); return; }
     if ((game.scene === 'gameover') && game.level && game.level.phaseT > 0.4) { retry(); return; }
     action();
@@ -297,13 +382,16 @@
       if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     });
   }
-  bind('btnPlay', function () { startLevel(1); });
   bind('btnL1', function () { startLevel(1); });
-  bind('btnL2', function () { if (game.unlocked >= 2) startLevel(2, false); });
+  bind('btnL2', function () { startLevel(2); });
+  bind('btnShop', openShop);
+  bind('btnShop1', openShop);
+  bind('btnShop2', openShop);
+  bind('btnShopBack', toMenu);
   bind('btnSound', function () { CD.Audio.toggle(); refreshSoundLabels(); });
   bind('hudMute', function () { CD.Audio.toggle(); refreshSoundLabels(); });
   bind('btnRetry', retry);
-  bind('btnAgain', function () { startLevel(1); });
+  bind('btnAgain', function () { startLevel(2); });
   bind('btnMenu1', toMenu);
   bind('btnMenu2', toMenu);
   bind('btnResume', function () { resume(); });
@@ -351,7 +439,7 @@
     var c = game.menuCake;
     CD.drawCake(ctx, CD.W / 2, c.y, 72, {
       rot: Math.sin(game.menuT * 2.4) * 0.08, t: game.menuT, legs: 'dangle', legPhase: game.menuT * 4,
-      arms: 'flap', armPhase: c.arm, face: Math.sin(game.menuT * 0.7) > 0.85 ? 'joy' : 'happy',
+      arms: 'flap', armPhase: c.arm, face: Math.sin(game.menuT * 0.7) > 0.85 ? 'joy' : 'happy', skin: game.skin,
       sx: 1 + Math.sin(game.menuT * 4.8) * 0.03, sy: 1 - Math.sin(game.menuT * 4.8) * 0.03
     });
   }
@@ -364,7 +452,7 @@
       if (!f.done && f.t >= f.dur) { f.done = true; if (f.mid) f.mid(); }
       if (f.t >= f.dur * 2) game.fade = null;
     }
-    if (game.scene === 'menu') updateMenu(dt);
+    if (game.scene === 'menu' || game.scene === 'shop') updateMenu(dt);
     else if (game.level) game.level.update(dt);
     game.particles.update(dt);
     if (game.shakeT > 0) game.shakeT -= dt;
@@ -379,7 +467,7 @@
     }
     CD.resetTransform(ctx);
     ctx.globalAlpha = 1;
-    if (game.scene === 'menu') drawMenu();
+    if (game.scene === 'menu' || game.scene === 'shop') drawMenu();
     else if (game.level) game.level.draw(ctx);
     CD.view.ox = 0; CD.view.oy = 0;
     CD.resetTransform(ctx);

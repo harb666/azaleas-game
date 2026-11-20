@@ -33,22 +33,29 @@
         <span class="row"><span>C</span><span>A</span><span>K</span><span>E</span></span>
         <span class="row"><span>D</span><span>A</span><span>S</span><span>H</span></span>
       </h1>
+      <div class="points-pill" id="menuPoints">⭐ 0 points</div>
       <div class="menu-spacer"></div>
-      <button class="btn big pink" id="btnPlay">▶ PLAY</button>
       <div class="levels">
-        <button class="btn level" id="btnL1" data-level="1"><b>1</b><small>Sky</small></button>
-        <button class="btn level" id="btnL2" data-level="2"><b>2</b><small>Run</small></button>
+        <button class="btn level" id="btnL1"><b>1</b><small>Fly forever</small></button>
+        <button class="btn level run" id="btnL2"><b>2</b><small>Run &amp; jump</small></button>
       </div>
-      <button class="btn small lav" id="btnSound">🔊 Sound: ON</button>
+      <div class="menu-row">
+        <button class="btn small pink" id="btnShop">🎂 Cakes<span class="shop-badge hidden" id="shopBadge">NEW</span></button>
+        <button class="icon-btn big-icon" id="btnSound" aria-label="Sound on/off">🔊</button>
+      </div>
       <div class="best" id="menuBest"></div>
     </div>
 
-    <!-- Level complete -->
-    <div id="levelComplete" class="overlay hidden see-through">
-      <div class="banner">
-        <div class="banner-title">LEVEL COMPLETE! 🍓</div>
-        <div class="stars"><span>★</span><span>★</span><span>★</span></div>
-        <div class="banner-sub">Get ready to <b>RUN!</b></div>
+    <!-- Character shop -->
+    <div id="shop" class="overlay hidden dim">
+      <div class="shop-panel">
+        <div class="shop-head">
+          <div class="shop-title">Cakes</div>
+          <div class="points-pill" id="shopPoints">⭐ 0</div>
+        </div>
+        <div class="shop-sub">Earn points by flying, running and catching strawberries.</div>
+        <div class="shop-grid" id="shopGrid"></div>
+        <button class="btn small lav" id="btnShopBack">⌂ BACK</button>
       </div>
     </div>
 
@@ -58,9 +65,14 @@
         <div class="card-emoji">🍰💫</div>
         <div class="card-title">Oopsie!</div>
         <div class="card-score">Score <b id="goScore">0</b></div>
+        <div class="card-points" id="goBestPts"></div>
         <div class="card-best" id="goBest"></div>
+        <div class="card-unlock hidden" id="goBestUnlock"></div>
         <button class="btn big pink" id="btnRetry">↻ RETRY</button>
-        <button class="btn small lav" id="btnMenu1">⌂ MAIN MENU</button>
+        <div class="card-row">
+          <button class="btn small lav" id="btnMenu1">⌂ MENU</button>
+          <button class="btn small mint" id="btnShop1">🎂 CAKES</button>
+        </div>
       </div>
     </div>
 
@@ -71,11 +83,18 @@
         <div class="card-title">YOU DID IT!</div>
         <div class="stars"><span>★</span><span>★</span><span>★</span></div>
         <div class="card-score">Score <b id="vScore">0</b></div>
+        <div class="card-points" id="vBestPts"></div>
         <div class="card-best" id="vBest"></div>
-        <button class="btn big pink" id="btnAgain">↻ PLAY AGAIN</button>
-        <button class="btn small lav" id="btnMenu2">⌂ MAIN MENU</button>
+        <div class="card-unlock hidden" id="vBestUnlock"></div>
+        <button class="btn big pink" id="btnAgain">↻ RUN AGAIN</button>
+        <div class="card-row">
+          <button class="btn small lav" id="btnMenu2">⌂ MENU</button>
+          <button class="btn small mint" id="btnShop2">🎂 CAKES</button>
+        </div>
       </div>
     </div>
+
+    <div id="toast" class="toast hidden"></div>
 
     <!-- Pause -->
     <div id="paused" class="overlay hidden dim">

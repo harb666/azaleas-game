@@ -5,9 +5,17 @@
 
   var PW = 62;            // pipe width
   var CAP_W = 76, CAP_H = 26;
-  var PIPE_COUNT = 5;     // exactly five pipe pairs complete the level
-  var SPACING = 230;
-  var SPEED = 115;
+  // Endless: it starts gentle and gets a little harder with every pipe.
+  function difficulty(n) {
+    return {
+      speed: Math.min(115 + n * 3.5, 205),        // scroll speed
+      gap: Math.max(196 - n * 2.5, 132),          // opening between pipes
+      spacing: Math.max(230 - n * 1.6, 188),      // distance between pipe pairs
+      up: Math.min(100 + n * 1.5, 125),           // biggest climb from one gap to the next
+      down: Math.min(110 + n * 3, 170)            // biggest drop from one gap to the next
+    };
+  }
+  var MILESTONES = { 5: 'Amazing! 🍓', 10: 'Faster! 🚀', 15: 'Super cake! ⭐', 20: 'Wow, 20 pipes! 🎉', 30: 'Cake legend! 👑' };
   var GRAVITY = 1350;
   var FLAP_V = -410;
   var MAX_FALL = 560;
@@ -102,40 +110,40 @@
   }
 
   Level1.prototype.reset = function () {
-    var H = CD.H, W = CD.W;
+    var H = CD.H;
     this.phase = 'ready';
     this.t = 0;
     this.phaseT = 0;
-    this.speed = SPEED;
+    this.diff = difficulty(0);
+    this.speed = this.diff.speed;
     this.cake = { x: CAKE_X, y: H * 0.42, vy: 0, rot: 0, sq: 0, sqv: 0, arm: 0, face: 'happy', spin: 0 };
     this.pipes = [];
     this.berries = [];
     this.passed = 0;
+    this.spawned = 0;
     this.trailAcc = 0;
-
-    var floor = H - FLOOR_H;
-    var prev = H * 0.45;
-    for (var i = 0; i < PIPE_COUNT; i++) {
-      var gap = 196 - i * 4;
-      var minY = 78 + gap / 2;                 // keep a visible top pipe
-      var maxY = floor - 62 - gap / 2;         // keep a visible bottom pipe
-      var gy = CD.rand(minY, maxY);
-      gy = CD.clamp(gy, prev - 120, prev + 120); // never an impossible jump between gaps
-      gy = CD.clamp(gy, minY, maxY);
-      prev = gy;
-      this.pipes.push({ x: W + 90 + i * SPACING, gapY: gy, gap: gap, passed: false, theme: i % PIPE_THEMES.length });
-    }
-    // strawberries: inside some gaps, and floating between pipes
-    for (var j = 0; j < PIPE_COUNT; j++) {
-      var p = this.pipes[j];
-      if (j % 2 === 1) this.berries.push({ x: p.x + PW / 2, y: p.gapY, got: false, ph: j });
-      else if (j < PIPE_COUNT - 1) {
-        var nx = this.pipes[j + 1];
-        this.berries.push({ x: p.x + PW + (SPACING - PW) / 2, y: (p.gapY + nx.gapY) / 2, got: false, ph: j });
-      }
-    }
-    this.totalBerries = this.berries.length;
     this.collected = 0;
+    this.lastGapY = H * 0.45;
+    this.spawnPipe(CD.W + 90);
+    while (this.pipes[this.pipes.length - 1].x < CD.W * 2) this.spawnPipe();
+  };
+
+  // Add the next pipe pair, always reachable from the previous gap
+  Level1.prototype.spawnPipe = function (x) {
+    var H = CD.H, d = difficulty(this.spawned);
+    var last = this.pipes[this.pipes.length - 1];
+    if (x == null) x = last.x + d.spacing;
+    var floor = H - FLOOR_H;
+    var minY = 78 + d.gap / 2, maxY = floor - 62 - d.gap / 2;
+    var gy = CD.clamp(CD.rand(minY, maxY), this.lastGapY - d.up, this.lastGapY + d.down);
+    gy = CD.clamp(gy, minY, maxY);
+    var p = { x: x, gapY: gy, gap: d.gap, passed: false, theme: this.spawned % PIPE_THEMES.length };
+    // strawberries: inside every other gap, and sometimes floating between pipes
+    if (this.spawned % 2 === 1) this.berries.push({ x: x + PW / 2, y: gy, got: false, ph: this.spawned });
+    else if (last && this.spawned % 4 === 0) this.berries.push({ x: last.x + PW + (x - last.x - PW) / 2, y: (last.gapY + gy) / 2, got: false, ph: this.spawned });
+    this.pipes.push(p);
+    this.lastGapY = gy;
+    this.spawned++;
   };
 
   Level1.prototype.input = function () {
@@ -159,28 +167,21 @@
     c.spin = 6;
     CD.Audio.play('hit');
     this.g.shake(0.35, 7);
-    this.g.particles.burst(c.x, c.y, 14, [CD.Sprites.cakePink, CD.Sprites.dotPink, CD.Sprites.sparkGold], 220);
-  };
-
-  Level1.prototype.complete = function () {
-    this.phase = 'complete';
-    this.phaseT = 0;
-    this.cake.face = 'joy';
-    var stars = 1 + (this.collected >= Math.ceil(this.totalBerries / 2) ? 1 : 0) + (this.collected >= this.totalBerries ? 1 : 0);
-    this.g.onLevelComplete(1, stars);
-    this.g.particles.confetti(CD.W * 0.3, CD.H * 0.4, 50, 1);
-    this.g.particles.confetti(CD.W * 0.7, CD.H * 0.4, 50, 1);
+    this.g.particles.burst(c.x, c.y, 14, [CD.Sprites.trail.pieces[0], CD.Sprites.trail.dots[0], CD.Sprites.sparkGold], 220);
   };
 
   Level1.prototype.update = function (dt) {
-    var c = this.cake, H = CD.H, W = CD.W, P = this.g.particles;
+    var c = this.cake, H = CD.H, P = this.g.particles;
     this.t += dt;
     this.phaseT += dt;
 
-    var scroll = (this.phase === 'dying') ? 0 : this.speed;
-    this.bg.update(dt, scroll);
+    // speed eases toward the current difficulty
+    var target = this.phase === 'play' ? this.diff.speed : (this.phase === 'ready' ? 0 : this.speed);
+    if (this.phase === 'dying' || this.phase === 'dead') target = 0;
+    this.speed += (target - this.speed) * Math.min(1, dt * 2);
+    var bgSpeed = this.phase === 'ready' ? 60 : this.speed;
+    this.bg.update(dt, bgSpeed);
 
-    // squash & stretch spring
     c.sqv += (-c.sq * 260 - c.sqv * 14) * dt;
     c.sq += c.sqv * dt;
     c.arm += dt * (c.vy < 0 ? 26 : 12);
@@ -192,9 +193,8 @@
       c.vy = Math.min(c.vy + GRAVITY * dt, MAX_FALL);
       c.y += c.vy * dt;
       if (c.y < CAKE_S * 0.5) { c.y = CAKE_S * 0.5; if (c.vy < 0) c.vy = 0; }
-      var target = CD.clamp(c.vy / 700, -0.45, 0.9) * 0.75;
-      c.rot += (target - c.rot) * Math.min(1, dt * 10);
-      // pipes
+      var tr = CD.clamp(c.vy / 700, -0.45, 0.9) * 0.75;
+      c.rot += (tr - c.rot) * Math.min(1, dt * 10);
       for (var i = 0; i < this.pipes.length; i++) {
         var p = this.pipes[i];
         p.x -= this.speed * dt;
@@ -204,11 +204,16 @@
         if (!p.passed && p.x + PW < c.x - HIT_R) {
           p.passed = true;
           this.passed++;
-          this.g.addScore(10);
+          this.diff = difficulty(this.passed);
+          this.g.addScore(1);
           CD.Audio.play('pass');
           P.burst(p.x + PW / 2, p.gapY, 10, CD.Sprites.sparks, 160);
+          if (MILESTONES[this.passed] || (this.passed > 30 && this.passed % 10 === 0)) {
+            this.g.toast(MILESTONES[this.passed] || (this.passed + ' pipes! 🌟'));
+            P.confetti(CD.W / 2, CD.H * 0.3, 40, 0.9);
+            CD.Audio.play('collect');
+          }
           this.g.onProgress();
-          if (this.passed >= PIPE_COUNT) { this.complete(); break; }
         }
       }
       for (var b = 0; b < this.berries.length; b++) {
@@ -225,32 +230,23 @@
           }
         }
       }
+      // endless: keep pipes coming, forget the ones far behind
+      while (this.pipes[this.pipes.length - 1].x < CD.W + 160) this.spawnPipe();
+      while (this.pipes.length && this.pipes[0].x < -CAP_W - 20) this.pipes.shift();
+      while (this.berries.length && this.berries[0].x < -40) this.berries.shift();
       if (this.phase === 'play' && c.y + HIT_R > H - FLOOR_H + 8) this.die();
     } else if (this.phase === 'dying') {
       c.vy += GRAVITY * dt;
       c.y += c.vy * dt;
       c.rot += c.spin * dt;
       if (this.phaseT > 1.3) { this.phase = 'dead'; this.g.onDead(); }
-    } else if (this.phase === 'complete') {
-      // happy autopilot hover while we celebrate
-      var ty = H * 0.56 + Math.sin(this.t * 4) * 12;
-      c.vy = 0;
-      c.y += (ty - c.y) * Math.min(1, dt * 3);
-      c.rot += (Math.sin(this.t * 4) * 0.12 - c.rot) * Math.min(1, dt * 5);
-      c.arm += dt * 10;
-      for (var k = 0; k < this.pipes.length; k++) this.pipes[k].x -= this.speed * dt;
-      for (var b2 = 0; b2 < this.berries.length; b2++) this.berries[b2].x -= this.speed * dt;
-      if (this.phaseT > 0.6 && this.phaseT - dt <= 0.6) P.confettiRain(60);
-      if (this.phaseT > 1.3 && this.phaseT - dt <= 1.3) P.confetti(c.x, c.y, 40, 0.8);
-      if (this.phaseT > 3.0 && !this.leaving) { this.leaving = true; this.g.onLevel1Done(); }
     }
 
-    // the magical shortcake trail
-    if (this.phase !== 'dying' && this.phase !== 'dead') {
+    if (this.phase === 'ready' || this.phase === 'play') {
       this.trailAcc += dt * 46;
       while (this.trailAcc > 1) {
         this.trailAcc -= 1;
-        P.trail(c.x - CAKE_S * 0.45, c.y + 2, CAKE_S * 0.3, -this.speed * 0.75);
+        P.trail(c.x - CAKE_S * 0.45, c.y + 2, CAKE_S * 0.3, -Math.max(this.speed, 60) * 0.75);
       }
     }
   };
@@ -302,11 +298,10 @@
     CD.resetTransform(ctx);
     CD.drawCake(ctx, c.x, c.y, CAKE_S, {
       rot: c.rot, sx: 1 - c.sq * 0.8, sy: 1 + c.sq, t: this.t,
-      legs: 'dangle', legPhase: this.t * 6, arms: this.phase === 'dying' ? 'up' : 'flap', armPhase: c.arm, face: c.face
+      legs: 'dangle', legPhase: this.t * 6, arms: this.phase === 'dying' ? 'up' : 'flap', armPhase: c.arm, face: c.face, skin: this.g.skin
     });
-    if (this.phase === 'ready') this.g.drawHint(ctx, 'TAP TO FLAP!', 'Fly through 5 candy pipes', c.y + 70);
+    if (this.phase === 'ready') this.g.drawHint(ctx, 'TAP TO FLAP!', 'How far can you fly?', c.y + 70);
   };
 
   CD.Level1 = Level1;
-  CD.Level1.PIPE_COUNT = PIPE_COUNT;
 })();

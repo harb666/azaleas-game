@@ -4,17 +4,17 @@
   var CD = window.CD;
   var K = 3; // supersampling so sprites stay crisp on retina screens
 
-  function cakePiece(top) {
+  function cakePiece(top, body, cream, slice, line) {
     return CD.makeCanvas(14, 14, K, function (c) {
       CD.rr(c, 1, 3, 12, 10, 3);
-      c.fillStyle = '#f7d59a'; c.fill();
-      c.fillStyle = '#fff';
+      c.fillStyle = body || '#f7d59a'; c.fill();
+      c.fillStyle = cream || '#fff';
       c.fillRect(1.5, 7, 11, 2.2);
-      c.fillStyle = '#ff5c7f';
+      c.fillStyle = slice || '#ff5c7f';
       c.beginPath(); c.arc(5, 8.1, 1.3, 0, Math.PI * 2); c.arc(9.5, 8.1, 1.3, 0, Math.PI * 2); c.fill();
       CD.rr(c, 1, 2, 12, 4.5, 2.5);
       c.fillStyle = top; c.fill();
-      c.lineWidth = 1; c.strokeStyle = '#a8566f';
+      c.lineWidth = 1; c.strokeStyle = line || '#a8566f';
       CD.rr(c, 1, 2, 12, 11, 3); c.stroke();
     });
   }
@@ -63,7 +63,22 @@
     });
   }
 
+  var skinCache = {};
+
   CD.Sprites = {
+    // Trail pieces in the selected character's flavour
+    useSkin: function (sk) {
+      if (!skinCache[sk.id]) {
+        skinCache[sk.id] = {
+          pieces: [cakePiece(sk.frost, sk.sponge, sk.cream, sk.slice, sk.line), cakePiece(sk.cream, sk.sponge, sk.cream, sk.slice, sk.line)],
+          dots: sk.dots.map(dot),
+          mini: CD.makeCanvas(14, 14, K, function (c) {
+            if (sk.topper === 'strawberry') CD.drawStrawberry(c, 7, 8, 5.5); else CD.drawTopper(c, sk.topper, 7, 8, 5);
+          })
+        };
+      }
+      this.trail = skinCache[sk.id];
+    },
     build: function () {
       var s = this;
       s.cakePink = cakePiece('#ff9ec4');
@@ -84,6 +99,7 @@
       s.cloud2 = cloud(90, 56, 1);
       s.hearts = [s.heartPink, s.heartLav, s.heartMint, s.heartBlue];
       s.sparks = [s.sparkWhite, s.sparkGold, s.sparkPink];
+      s.useSkin(CD.SKINS[0]);
     }
   };
 })();

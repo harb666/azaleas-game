@@ -3,7 +3,7 @@
   'use strict';
   var CD = window.CD;
 
-  var SPEED = 185;
+  var SPEED_START = 170, SPEED_END = 255; // speeds up as you get closer to the finish
   var GRAVITY = 2200;
   var JUMP_V = -820;      // ~150px high, ~140px long jump
   var CAKE_S = 44;
@@ -23,12 +23,25 @@
     gap:     { w: 80, h: 0 }
   };
 
-  // Hand-made course: every obstacle is spaced so a jump always fits.
-  var COURSE = [
-    ['choc', 0], ['berry', 340], ['spikes', 330], ['gap', 340], ['sweet', 360],
-    ['barrier', 400], ['choc', 320], ['gap', 330], ['berry', 330], ['sweet', 360],
-    ['spikes', 400], ['barrier', 320], ['gap', 330], ['choc', 320], ['sweet', 360], ['berry', 400]
-  ];
+  // Course: easy obstacles first, then everything, packed closer as it goes.
+  // Spacing always leaves time to land and jump again at the speed reached there.
+  var OBSTACLES = 30;
+  function buildCourse() {
+    var easy = ['choc', 'berry', 'spikes', 'gap'], all = ['choc', 'berry', 'spikes', 'gap', 'sweet', 'barrier'];
+    var list = [], prev = '';
+    for (var i = 0; i < OBSTACLES; i++) {
+      var k = i / (OBSTACLES - 1);
+      var pool = i < 5 ? easy : all, type;
+      do { type = CD.pick(pool); } while (type === prev);
+      if (i === 0) type = 'choc';
+      var spacing = i === 0 ? 0 : Math.round(CD.lerp(370, 290, k));
+      if (type === 'sweet') spacing += 70;          // rolling sweets come toward you: give extra room
+      if (prev === 'sweet') spacing += 30;
+      list.push([type, spacing]);
+      prev = type;
+    }
+    return list;
+  }
 
   function Level2(game) {
     this.g = game;
@@ -53,13 +66,15 @@
     this.gaps = [];
     this.berries = [];
     var x = 620;
+    var COURSE = buildCourse();
     for (var i = 0; i < COURSE.length; i++) {
       x += COURSE[i][1];
       var type = COURSE[i][0], T = TYPES[type];
       if (type === 'gap') {
-        this.gaps.push({ x: x, w: T.w });
+        var gw = Math.round(CD.lerp(76, 100, i / COURSE.length)); // holes get wider
+        this.gaps.push({ x: x, w: gw });
         // a reward berry floating over the gap
-        this.berries.push({ x: x + T.w / 2, y: this.GY - 95, got: false, ph: i });
+        this.berries.push({ x: x + gw / 2, y: this.GY - 95, got: false, ph: i });
       } else {
         this.obs.push({ type: type, x: x, w: T.w, h: T.h, inset: T.inset, passed: false, roll: 0, rolling: false });
         if (i % 3 === 1) this.berries.push({ x: x + T.w / 2, y: this.GY - T.h - 70, got: false, ph: i });
@@ -67,7 +82,8 @@
       // ground-level berries between obstacles
       if (i % 2 === 0 && i < COURSE.length - 1) this.berries.push({ x: x + 170, y: this.GY - 24, got: false, ph: i + 0.5 });
     }
-    this.finishX = x + 420;
+    this.finishX = x + 450;
+    this.toasted = {};
     this.totalBerries = this.berries.length;
     this.collected = 0;
     this.cleared = 0;
@@ -127,7 +143,7 @@
       c.grounded = false;
       CD.Audio.play('hit');
       this.g.shake(0.35, 7);
-      this.g.particles.burst(CAKE_X, c.y, 14, [CD.Sprites.cakePink, CD.Sprites.dotPink, CD.Sprites.sparkGold], 220);
+      this.g.particles.burst(CAKE_X, c.y, 14, [CD.Sprites.trail.pieces[0], CD.Sprites.trail.dots[0], CD.Sprites.sparkGold], 220);
     }
   };
 
@@ -135,7 +151,7 @@
     this.phase = 'finish';
     this.phaseT = 0;
     this.cake.face = 'joy';
-    this.g.addScore(50);
+    this.g.addScore(10);
     CD.Audio.play('victory');
     var P = this.g.particles;
     P.confetti(CAKE_X + 40, this.GY - 120, 70, 1.1);
@@ -149,7 +165,8 @@
     var base = this.cakeY();
 
     // speed: stand still before start, run during play, slow down at the finish
-    var targetSpeed = (this.phase === 'play') ? SPEED : (this.phase === 'finish' ? 60 : 0);
+    var runSpeed = CD.lerp(SPEED_START, SPEED_END, this.progress());
+    var targetSpeed = (this.phase === 'play') ? runSpeed : (this.phase === 'finish' ? 60 : 0);
     if (this.phase === 'dying' || this.phase === 'falling' || this.phase === 'dead') targetSpeed = 0;
     this.speed += (targetSpeed - this.speed) * Math.min(1, dt * (this.phase === 'play' ? 6 : 3));
     if (this.phase === 'dying' || this.phase === 'falling' || this.phase === 'dead') this.speed = 0;
@@ -215,7 +232,7 @@
           if (!o.passed && right < hb.x) {
             o.passed = true;
             this.cleared++;
-            this.g.addScore(10);
+            this.g.addScore(1);
             CD.Audio.play('pass');
             P.burst(CAKE_X - 20, c.y - 20, 6, CD.Sprites.sparks, 120);
           }
@@ -225,10 +242,14 @@
           if (!gp.passed && gp.x + gp.w - this.dist < CAKE_X - HALF_W && c.y <= base + 1) {
             gp.passed = true;
             this.cleared++;
-            this.g.addScore(10);
+            this.g.addScore(1);
             CD.Audio.play('pass');
           }
         }
+        var pr = this.progress();
+        if (pr > 0.33 && !this.toasted.a) { this.toasted.a = 1; this.g.toast('Speeding up! 💨'); }
+        if (pr > 0.66 && !this.toasted.b) { this.toasted.b = 1; this.g.toast('Super fast! 🚀'); }
+        if (pr > 0.9 && !this.toasted.c) { this.toasted.c = 1; this.g.toast('Almost there! 🏁'); }
         if (worldX >= this.finishX + 20) this.finish();
         this.g.onProgress();
       } else {
@@ -523,7 +544,7 @@
     CD.drawCake(ctx, CAKE_X, c.y + bounce, CAKE_S, {
       rot: c.rot, sx: 1 - c.sq * 0.8, sy: 1 + c.sq, t: this.t,
       legs: legs, legPhase: c.legPhase, arms: this.phase === 'finish' ? 'up' : (running ? 'swing' : 'up'),
-      armPhase: c.legPhase + this.t * 2, face: c.face
+      armPhase: c.legPhase + this.t * 2, face: c.face, skin: this.g.skin
     });
     if (this.phase === 'ready') this.g.drawHint(ctx, 'TAP TO JUMP!', 'No more flying — run & jump!', GY - 190);
   };
